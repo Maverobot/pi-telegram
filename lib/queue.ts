@@ -1359,6 +1359,8 @@ export interface TelegramPromptEnqueueRuntimeDeps<
     messages: TMessage[],
     historyTurns: PendingTelegramTurn[],
   ) => Promise<PendingTelegramTurn>;
+  shouldSteerPromptTurn?: () => boolean;
+  steerPromptTurn?: (turn: PendingTelegramTurn) => void;
   updateStatus: () => void;
   dispatchNextQueuedTelegramTurn: () => void;
 }
@@ -1374,12 +1376,25 @@ export interface TelegramPromptEnqueueControllerDeps<
     historyTurns: PendingTelegramTurn[],
     ctx: TContext,
   ) => Promise<PendingTelegramTurn>;
+  shouldSteerPromptTurn?: (ctx: TContext) => boolean;
+  steerPromptTurn?: (turn: PendingTelegramTurn, ctx: TContext) => void;
   updateStatus: (ctx: TContext) => void;
   dispatchNextQueuedTelegramTurn: (ctx: TContext) => void;
 }
 
 export interface TelegramPromptEnqueueController<TMessage, TContext = unknown> {
   enqueue: (messages: TMessage[], ctx: TContext) => Promise<void>;
+}
+
+export type TelegramPromptTurnAdmission = "queued" | "steered";
+
+export interface TelegramPromptTurnRoutingRuntimeDeps<
+  TContext = unknown,
+> extends TelegramQueueStore<TContext> {
+  shouldSteerPromptTurn?: () => boolean;
+  steerPromptTurn?: (turn: PendingTelegramTurn) => void;
+  updateStatus: () => void;
+  dispatchNextQueuedTelegramTurn: () => void;
 }
 
 function isTelegramStaleContextError(error: unknown): boolean {
@@ -1656,6 +1671,39 @@ export function prioritizeTelegramQueuePromptRuntime<TContext>(
   return true;
 }
 
+function canSteerTelegramPromptTurn<TContext = unknown>(
+  deps: Pick<
+    TelegramPromptTurnRoutingRuntimeDeps<TContext>,
+    "shouldSteerPromptTurn" | "steerPromptTurn"
+  >,
+): boolean {
+  return (deps.shouldSteerPromptTurn?.() ?? false) && !!deps.steerPromptTurn;
+}
+
+export function routeTelegramPromptTurnRuntime<TContext = unknown>(
+  turn: PendingTelegramTurn,
+  deps: TelegramPromptTurnRoutingRuntimeDeps<TContext>,
+  options: {
+    allowSteer?: boolean;
+    remainingItems?: TelegramQueueItem<TContext>[];
+  } = {},
+): TelegramPromptTurnAdmission {
+  if ((options.allowSteer ?? true) && canSteerTelegramPromptTurn(deps)) {
+    deps.steerPromptTurn?.(turn);
+    deps.updateStatus();
+    return "steered";
+  }
+  deps.setQueuedItems(
+    appendTelegramQueueItem(
+      options.remainingItems ?? deps.getQueuedItems(),
+      turn,
+    ),
+  );
+  deps.updateStatus();
+  deps.dispatchNextQueuedTelegramTurn();
+  return "queued";
+}
+
 export async function enqueueTelegramPromptTurnRuntime<
   TMessage,
   TContext = unknown,
@@ -1663,17 +1711,21 @@ export async function enqueueTelegramPromptTurnRuntime<
   messages: TMessage[],
   deps: TelegramPromptEnqueueRuntimeDeps<TMessage, TContext>,
 ): Promise<void> {
-  const enqueuePlan = planTelegramPromptEnqueue(
-    deps.getQueuedItems(),
-    deps.getFoldQueuedPromptsIntoHistory(),
-  );
+  const initialShouldSteer = canSteerTelegramPromptTurn(deps);
+  const enqueuePlan = initialShouldSteer
+    ? { historyTurns: [], remainingItems: undefined }
+    : {
+        ...planTelegramPromptEnqueue(
+          deps.getQueuedItems(),
+          deps.getFoldQueuedPromptsIntoHistory(),
+        ),
+      };
   deps.setFoldQueuedPromptsIntoHistory(false);
   const turn = await deps.createTurn(messages, enqueuePlan.historyTurns);
-  deps.setQueuedItems(
-    appendTelegramQueueItem(enqueuePlan.remainingItems, turn),
-  );
-  deps.updateStatus();
-  deps.dispatchNextQueuedTelegramTurn();
+  routeTelegramPromptTurnRuntime(turn, deps, {
+    allowSteer: initialShouldSteer,
+    remainingItems: enqueuePlan.remainingItems,
+  });
 }
 
 export function createTelegramPromptEnqueueController<
@@ -1688,6 +1740,12 @@ export function createTelegramPromptEnqueueController<
         ...deps,
         createTurn: (nextMessages, historyTurns) =>
           deps.createTurn(nextMessages, historyTurns, ctx),
+        shouldSteerPromptTurn: deps.shouldSteerPromptTurn
+          ? () => deps.shouldSteerPromptTurn?.(ctx) ?? false
+          : undefined,
+        steerPromptTurn: deps.steerPromptTurn
+          ? (turn) => deps.steerPromptTurn?.(turn, ctx)
+          : undefined,
         updateStatus: () => deps.updateStatus(ctx),
         dispatchNextQueuedTelegramTurn: () =>
           deps.dispatchNextQueuedTelegramTurn(ctx),
@@ -1821,7 +1879,7 @@ export function createTelegramDeferredQueueDispatchRuntime<TContext = unknown>(
 // --- Dispatch Runtime ---
 
 export interface TelegramPromptDeliveryOptions {
-  deliverAs: "followUp";
+  deliverAs: "steer" | "followUp";
 }
 
 export const TELEGRAM_PROMPT_FOLLOW_UP_DELIVERY = {

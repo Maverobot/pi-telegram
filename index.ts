@@ -344,6 +344,7 @@ export default function (pi: Pi.ExtensionAPI) {
     dispatchNextQueuedTelegramTurn,
     requestDeferredDispatchNextQueuedTelegramTurn:
       deferredQueueDispatchRuntime.request,
+    createActivePreviewState: previewRuntime.resetState,
     startTypingLoop: promptDispatchRuntime.startTypingLoop,
     stopTypingLoop: typing.stop,
     answerCallbackQuery,

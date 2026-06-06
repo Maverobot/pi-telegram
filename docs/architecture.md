@@ -124,9 +124,9 @@ Deleting `locks.json` resets runtime ownership without deleting Telegram configu
 6. Download files into `~/.pi/agent/tmp/telegram` with size limits and partial-download cleanup.
 7. Run configured/programmatic inbound handlers in order, appending successful stdout under `[outputs]`.
 8. Add local attachments under `[attachments]`, optional voice context, and optional final `[time]` context.
-9. Build a `PendingTelegramTurn` and append it to the bridge queue.
+9. Build a `PendingTelegramTurn` and either steer the active π run immediately or append it to the bridge queue.
 10. Handle `edited_message` updates separately while the original turn is still queued.
-11. Dispatch only when all safety gates are clear.
+11. Dispatch queued turns only when all safety gates are clear.
 
 Long-text split recovery is intentionally conservative: only human text at or above the near-limit threshold opens the debounce window; commands, bots, captions, media groups, and normal short follow-ups bypass it.
 
@@ -144,6 +144,8 @@ Dispatch rank:
 3. `default` prompt lane.
 
 Admission and planning validate lane contracts. Invalid lane/kind pairings fail predictably instead of being silently coerced.
+
+Steering is preferred for prompt follow-ups during active work. A Telegram prompt steers the live π run when `sendUserMessage` supports `deliverAs: "steer"`, no compaction or dispatch is pending, and either a Telegram turn is already active or the current π session is busy with local/TUI work. The first Telegram steering message during local/TUI work binds that active run to the Telegram reply target.
 
 Dispatch requires:
 
@@ -206,7 +208,7 @@ Key guarantees:
 
 Final delivery attaches reply metadata only where requested. Reply parameters apply only to the first chunk of split messages; continuation chunks are adjacent normal messages. Media-group turns reply to the representative message id.
 
-When a Telegram-owned active turn calls the `ask_user` tool, the bridge catches the tool call before execution, sends the question back to the same Telegram surface, plans non-guest single-select options through the normal `telegram_button` callback store, and blocks the original tool call. Guest-mode turns receive the visible question through guest reply delivery without inline buttons. This prevents pi-ask-user from opening a local dialog that the Telegram operator cannot see. The operator's button tap or Telegram reply becomes a normal queued follow-up turn.
+When a Telegram-owned active turn calls the `ask_user` tool, the bridge catches the tool call before execution, sends the question back to the same Telegram surface, plans non-guest single-select options through the normal `telegram_button` callback store, and blocks the original tool call. Guest-mode turns receive the visible question through guest reply delivery without inline buttons. This prevents pi-ask-user from opening a local dialog that the Telegram operator cannot see. The operator's button tap or Telegram reply becomes a normal Telegram follow-up turn, steering the active run when safe or queueing otherwise.
 
 ### Outbound Artifacts And Assistant Actions
 

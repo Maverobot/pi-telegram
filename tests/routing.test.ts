@@ -47,6 +47,39 @@ interface TestUpdate extends Updates.TelegramUpdateFlow {
   callback_query?: TestCallbackQuery;
 }
 
+test("Prompt steering state allows any active Pi run when Telegram can steer", () => {
+  assert.equal(
+    Routing.shouldSteerTelegramPromptTurnState({
+      canSendUserMessage: true,
+      compactionInProgress: false,
+      hasPendingDispatch: false,
+      hasActiveTelegramTurn: false,
+      isIdle: false,
+    }),
+    true,
+  );
+  assert.equal(
+    Routing.shouldSteerTelegramPromptTurnState({
+      canSendUserMessage: true,
+      compactionInProgress: false,
+      hasPendingDispatch: false,
+      hasActiveTelegramTurn: false,
+      isIdle: true,
+    }),
+    false,
+  );
+  assert.equal(
+    Routing.shouldSteerTelegramPromptTurnState({
+      canSendUserMessage: true,
+      compactionInProgress: true,
+      hasPendingDispatch: false,
+      hasActiveTelegramTurn: true,
+      isIdle: false,
+    }),
+    false,
+  );
+});
+
 test("Routing runtime forwards authorized text messages into prompt queueing", async () => {
   const events: string[] = [];
   const model: TestModel = { provider: "test", id: "model" };

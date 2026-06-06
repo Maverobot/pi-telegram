@@ -686,6 +686,7 @@ test("Button callback handler enqueues prompt actions", async () => {
         },
         enqueueButtonPrompt: (query, action, ctx) => {
           events.push({ query, action, ctx });
+          return "queued";
         },
       },
     ),
@@ -718,6 +719,7 @@ test("Button callback handler consumes expired button callbacks", async () => {
         },
         enqueueButtonPrompt: () => {
           events.push("unexpected:enqueue");
+          return "queued";
         },
       },
     ),

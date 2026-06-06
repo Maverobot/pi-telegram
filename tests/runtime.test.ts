@@ -224,11 +224,16 @@ function getRuntimeHarnessMessageText(content: RuntimeHarnessMessage): string {
   return getRuntimeHarnessTextBlock(content).text ?? "";
 }
 
+type RuntimeHarnessSendOptions = { deliverAs?: "steer" | "followUp" };
+
 function recordRuntimeDispatchEvent(
   events: string[],
   content: RuntimeHarnessMessage,
+  options?: RuntimeHarnessSendOptions,
 ): void {
-  events.push(`dispatch:${getRuntimeHarnessMessageText(content)}`);
+  events.push(
+    `${options?.deliverAs ?? "dispatch"}:${getRuntimeHarnessMessageText(content)}`,
+  );
 }
 
 type RuntimeHarnessHandler = (event: unknown, ctx: unknown) => Promise<unknown>;
@@ -236,7 +241,10 @@ type RuntimeHarnessCommand = {
   handler: (args: string, ctx: unknown) => Promise<void>;
 };
 type RuntimePiHarnessOptions = {
-  sendUserMessage?: (content: RuntimeHarnessMessage) => void;
+  sendUserMessage?: (
+    content: RuntimeHarnessMessage,
+    options?: RuntimeHarnessSendOptions,
+  ) => void;
   getThinkingLevel?: () => string;
   setModel?: (model: { provider: string; id: string }) => Promise<boolean>;
   setThinkingLevel?: (level: string) => void;
@@ -1311,9 +1319,10 @@ test("Extension runtime clears queued follow-ups after a Telegram stop", async (
     assert.equal(promptText, "[telegram] new request");
     assert.equal(promptText.includes("follow up"), false);
     assert.equal(
-      sendTexts.includes("Aborted current turn. Cleared 1 queued turn."),
-      true,
+      getRuntimeHarnessTextBlock(sentMessages[1]).text,
+      "[telegram] follow up",
     );
+    assert.equal(sendTexts.includes("Aborted current turn."), true);
     await handlers.get("session_shutdown")?.({}, idleCtx);
   } finally {
     restoreFetch();
@@ -1329,8 +1338,8 @@ test("Extension runtime handles immediate status before queued prompt after agen
   const secondUpdates = createRuntimeDeferredResponse();
   const thirdUpdates = createRuntimeDeferredResponse();
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
       firstDispatchResolved = true;
     },
   });
@@ -1466,8 +1475,8 @@ test("Extension runtime opens immediate model menu before queued prompt after ag
   const secondUpdates = createRuntimeDeferredResponse();
   const thirdUpdates = createRuntimeDeferredResponse();
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
       firstDispatchResolved = true;
     },
   });
@@ -1605,8 +1614,8 @@ test("Extension runtime keeps queued turns blocked until compaction completes", 
   const secondUpdates = createRuntimeDeferredResponse();
   const thirdUpdates = createRuntimeDeferredResponse();
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
     },
   });
   let getUpdatesCalls = 0;
@@ -1755,8 +1764,8 @@ test("Extension runtime blocks queued dispatch during observed auto-compaction",
   });
   const secondUpdates = createRuntimeDeferredResponse();
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
       firstDispatchResolve?.();
     },
   });
@@ -1826,7 +1835,9 @@ test("Extension runtime blocks queued dispatch during observed auto-compaction",
         },
       ]),
     );
-    await waitForCondition(() => getUpdatesCalls >= 3);
+    await waitForCondition(() =>
+      runtimeEvents.includes("steer:[telegram] queued during active turn"),
+    );
     await handlers.get("agent_end")?.(
       {
         messages: [
@@ -1848,8 +1859,10 @@ test("Extension runtime blocks queued dispatch during observed auto-compaction",
       false,
     );
     await handlers.get("session_compact")?.({}, ctx);
-    await waitForCondition(() =>
+    await flushMicrotasks();
+    assert.equal(
       runtimeEvents.includes("dispatch:[telegram] queued during active turn"),
+      false,
     );
     await handlers.get("session_shutdown")?.({}, ctx);
   } finally {
@@ -1862,8 +1875,8 @@ test("Extension runtime coalesces media-group updates into one delayed dispatch"
   const telegramConfig = await createRuntimeTelegramConfigFixture();
   const runtimeEvents: string[] = [];
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
     },
   });
   let getUpdatesCalls = 0;
@@ -1932,8 +1945,8 @@ test("Extension runtime coalesces likely split long text updates into one dispat
   const telegramConfig = await createRuntimeTelegramConfigFixture();
   const runtimeEvents: string[] = [];
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
     },
   });
   let getUpdatesCalls = 0;
@@ -2001,8 +2014,8 @@ test("Extension runtime clears pending split-text dispatch on shutdown", async (
   const telegramConfig = await createRuntimeTelegramConfigFixture();
   const runtimeEvents: string[] = [];
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
     },
   });
   let getUpdatesCalls = 0;
@@ -2115,8 +2128,8 @@ test("Extension runtime applies reaction priority and removal before the next di
   const fourthUpdates = createRuntimeDeferredResponse();
   const fifthUpdates = createRuntimeDeferredResponse();
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
       firstDispatchResolved = true;
     },
   });
@@ -2168,6 +2181,10 @@ test("Extension runtime applies reaction priority and removal before the next di
     await commands.get("telegram-connect")?.handler("", idleCtx);
     await waitForCondition(() => firstDispatchResolved);
     await handlers.get("agent_start")?.({}, activeCtx);
+    await handlers.get("session_before_compact")?.(
+      { signal: new AbortController().signal },
+      activeCtx,
+    );
     secondUpdates.resolve(
       createRuntimeTelegramApiResponse([
         {
@@ -2244,6 +2261,7 @@ test("Extension runtime applies reaction priority and removal before the next di
       },
       idleCtx,
     );
+    await handlers.get("session_compact")?.({}, idleCtx);
     await waitForCondition(() => runtimeEvents.length === 2);
     assert.equal(runtimeEvents[0], "dispatch:[telegram] first request");
     assert.equal(runtimeEvents[1], "dispatch:[telegram] newer waiting");
@@ -2410,8 +2428,8 @@ test("Extension runtime switches model in flight and dispatches a continuation t
   const secondUpdates = createRuntimeDeferredResponse();
   const thirdUpdates = createRuntimeDeferredResponse();
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
     },
     setModel: async (model) => {
       setModels.push(`${model.provider}/${model.id}`);
@@ -2568,30 +2586,25 @@ test("Extension runtime switches model in flight and dispatches a continuation t
   }
 });
 
-test("Extension runtime preserves long-session queue through abort, next, and model switch", async () => {
+test("Extension runtime steers active follow-ups without resurrecting them after abort", async () => {
   const telegramConfig = await createRuntimeTelegramConfigFixture();
   const runtimeEvents: string[] = [];
   const modelA = createRuntimeModel("openai", "gpt-a", true);
   const modelB = createRuntimeModel("anthropic", "claude-b", false);
   let idle = true;
   let abortCount = 0;
-  const setModels: Array<string> = [];
   const updates = Array.from({ length: 5 }, () =>
     createRuntimeDeferredResponse(),
   );
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
     },
-    setModel: async (model) => {
-      setModels.push(`${model.provider}/${model.id}`);
-      return true;
-    },
+    setModel: async () => true,
     setThinkingLevel: () => {},
   });
   let getUpdatesCalls = 0;
   let nextMessageId = 100;
-  const callbackAnswers: string[] = [];
   const restoreFetch = setRuntimeTestFetch(async (input, init) => {
     const method = getRuntimeTelegramApiMethod(input);
     const body = parseJsonRequestBody(init);
@@ -2626,7 +2639,6 @@ test("Extension runtime preserves long-session queue through abort, next, and mo
       return createRuntimeTelegramApiResponse(true);
     }
     if (method === "answerCallbackQuery") {
-      callbackAnswers.push(String(body?.text ?? ""));
       return createRuntimeTelegramApiResponse(true);
     }
     if (method === "sendChatAction")
@@ -2686,7 +2698,9 @@ test("Extension runtime preserves long-session queue through abort, next, and mo
         },
       ]),
     );
-    await waitForCondition(() => getUpdatesCalls >= 4);
+    await waitForCondition(() =>
+      runtimeEvents.includes("steer:[telegram] queued after abort"),
+    );
     assert.equal(
       runtimeEvents.includes("dispatch:[telegram] queued after abort"),
       false,
@@ -2737,50 +2751,11 @@ test("Extension runtime preserves long-session queue through abort, next, and mo
         },
       ]),
     );
-    await waitForCondition(() =>
-      runtimeEvents.includes("dispatch:[telegram] queued after abort"),
-    );
-    idle = false;
-    await handlers.get("agent_start")?.({}, ctx);
-    updates[4].resolve(
-      createRuntimeTelegramApiResponse([
-        {
-          _: "other",
-          update_id: 6,
-          callback_query: {
-            id: "cb-long-session",
-            from: { id: 77, is_bot: false, first_name: "Test" },
-            data: "model:pick:1",
-            message: {
-              message_id: 100,
-              chat: { id: 99, type: "private" },
-            },
-          },
-        },
-      ]),
-    );
-    await waitForCondition(() => abortCount === 2);
-    assert.deepEqual(setModels, ["anthropic/claude-b"]);
-    assert.equal(
-      callbackAnswers.includes("Switching to claude-b and continuing…"),
-      true,
-    );
-    idle = true;
-    await handlers.get("agent_end")?.(
-      {
-        messages: [
-          {
-            role: "assistant",
-            stopReason: "aborted",
-            content: [{ type: "text", text: "" }],
-          },
-        ],
-      },
-      ctx,
-    );
+    await waitForCondition(() => getUpdatesCalls >= 5);
+    await flushMicrotasks(50);
     assert.equal(
       runtimeEvents.includes("dispatch:[telegram] queued after abort"),
-      true,
+      false,
     );
     await handlers.get("session_shutdown")?.({}, ctx);
   } finally {
@@ -2800,8 +2775,8 @@ test("Extension runtime delays model-switch abort until the active tool finishes
   const secondUpdates = createRuntimeDeferredResponse();
   const thirdUpdates = createRuntimeDeferredResponse();
   const { handlers, commands, pi } = createRuntimePiHarness({
-    sendUserMessage: (content) => {
-      recordRuntimeDispatchEvent(runtimeEvents, content);
+    sendUserMessage: (content, options) => {
+      recordRuntimeDispatchEvent(runtimeEvents, content, options);
     },
     setModel: async (model) => {
       setModels.push(`${model.provider}/${model.id}`);

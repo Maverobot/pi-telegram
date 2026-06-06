@@ -14,6 +14,7 @@ import {
 } from "./outbound-markup.ts";
 import {
   type PendingTelegramTurn,
+  type TelegramPromptTurnAdmission,
   truncateTelegramQueueSummary,
 } from "./queue.ts";
 
@@ -64,7 +65,7 @@ export interface TelegramButtonCallbackHandlerDeps<TContext = unknown> {
     query: TelegramButtonCallbackQuery,
     action: TelegramOutboundButtonAction,
     ctx: TContext,
-  ) => void;
+  ) => TelegramPromptTurnAdmission;
 }
 
 function nowMs(): number {
@@ -221,7 +222,10 @@ export async function handleTelegramButtonCallbackQuery<TContext = unknown>(
     return true;
   }
 
-  deps.enqueueButtonPrompt(query, action, ctx);
-  await deps.answerCallbackQuery(query.id, "Queued.");
+  const admission = deps.enqueueButtonPrompt(query, action, ctx);
+  await deps.answerCallbackQuery(
+    query.id,
+    admission === "steered" ? "Sent to active run." : "Queued.",
+  );
   return true;
 }

@@ -78,7 +78,7 @@ What it feels like:
 
 - Start work in the terminal, walk away, and keep supervising the same live π session from Telegram.
 - Open `/start` and get a Telegram control panel for the running π session: status, prompt templates, model, thinking, settings, and queue.
-- Fire off three tasks while π is busy. They become visible queue items instead of terminal noise.
+- Send a follow-up while π is busy. It steers the active run immediately when safe, while non-steerable work remains visible in the queue.
 - Open Queue from the menu, inspect waiting work, delete stale prompts, or move important work forward.
 - Switch models from Telegram mid-run; the adapter schedules a safe continuation instead of tearing state apart.
 - Send a voice note; a configured inbound handler or registered STT provider transcribes it; π answers in the same chat.
@@ -123,16 +123,16 @@ The inline application menu is the primary operator surface. It exposes status, 
 
 ### Queue runtime
 
-Messages sent while π is busy enter the prompt queue and are processed in order. Control actions and model-switch continuation turns use higher-priority lanes. Queue processing and reply delivery stay local to the Pi instance that accepted the work, even if `/telegram-connect` later moves elsewhere.
+Telegram prompt routing prefers immediate steering during active work: when π is already running and steering is safe, a Telegram follow-up is delivered to the live conversation with `deliverAs: "steer"` instead of becoming a queue item. If steering is unavailable or unsafe, such as during compaction or while another dispatch is pending, prompt turns enter the prompt queue and are processed in order. Control actions and model-switch continuation turns use higher-priority lanes. Queue processing and reply delivery stay local to the Pi instance that accepted the work, even if `/telegram-connect` later moves elsewhere.
 
-The menu is the primary way to inspect and mutate the queue. Reactions are an extra shortcut when Telegram delivers `message_reaction` updates for the chat. The same rules apply to text, voice, files, images, and media groups:
+The menu is the primary way to inspect and mutate queued work. Reactions are an extra shortcut when Telegram delivers `message_reaction` updates for the chat. The same rules apply to queued text, voice, files, images, and media groups:
 
 - Priority shortcuts: `👍`, `⚡️`, `❤️`, `🕊`, and `🔥` promote waiting work.
 - Removal shortcuts: `👎`, `👻`, `💔`, `💩`, and `🗑` remove waiting work from the queue.
 
 ### Interactive `ask_user` prompts
 
-When an agent calls the `ask_user` tool during an active Telegram-originated turn, the bridge forwards the question to Telegram instead of opening a hidden local/TUI dialog. Single-select options become inline buttons when possible; otherwise the user can answer by replying in Telegram. Button taps and replies re-enter the normal Telegram prompt queue as follow-up work.
+When an agent calls the `ask_user` tool during an active Telegram-originated turn, the bridge forwards the question to Telegram instead of opening a hidden local/TUI dialog. Single-select options become inline buttons when possible; otherwise the user can answer by replying in Telegram. Button taps and replies re-enter normal Telegram prompt routing, steering the active run when safe or queueing otherwise.
 
 ### Streaming and Telegram HTML rendering
 

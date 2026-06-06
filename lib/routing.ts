@@ -83,6 +83,7 @@ export interface TelegramInboundRouteRuntimeDeps<
   requestDeferredDispatchNextQueuedTelegramTurn?: (
     dispatch: (ctx: TContext) => void,
   ) => void;
+  createActivePreviewState?: () => void;
   startTypingLoop?: (ctx: TContext, chatId?: number) => void;
   stopTypingLoop?: () => void;
   answerCallbackQuery: (
@@ -123,7 +124,7 @@ export interface TelegramInboundRouteRuntimeDeps<
   ) => Promise<void>;
   setModel: (model: TModel) => Promise<boolean>;
   sendUserMessage?: (
-    message: string,
+    message: string | Queue.PendingTelegramTurn["content"],
     options?: Queue.TelegramPromptDeliveryOptions,
   ) => void;
   isIdle: (ctx: TContext) => boolean;
@@ -155,6 +156,25 @@ const TELEGRAM_OWNED_CALLBACK_PREFIXES = [
 function isTelegramOwnedCallbackData(data: string): boolean {
   return TELEGRAM_OWNED_CALLBACK_PREFIXES.some((prefix) =>
     data.startsWith(prefix),
+  );
+}
+
+export interface TelegramPromptSteeringState {
+  canSendUserMessage: boolean;
+  compactionInProgress: boolean;
+  hasPendingDispatch: boolean;
+  hasActiveTelegramTurn: boolean;
+  isIdle: boolean;
+}
+
+export function shouldSteerTelegramPromptTurnState(
+  state: TelegramPromptSteeringState,
+): boolean {
+  return (
+    state.canSendUserMessage &&
+    !state.compactionInProgress &&
+    !state.hasPendingDispatch &&
+    (state.hasActiveTelegramTurn || !state.isIdle)
   );
 }
 
@@ -248,19 +268,24 @@ export function createTelegramInboundRouteRuntime<
             const chatId = buttonQuery.message?.chat?.id;
             const messageId = buttonQuery.message?.message_id;
             if (typeof chatId !== "number" || typeof messageId !== "number")
-              return;
+              return "queued";
             const queueOrder = deps.bridgeRuntime.queue.allocateItemOrder();
-            deps.queueMutationRuntime.append(
+            return Queue.routeTelegramPromptTurnRuntime(
               OutboundHandlers.createTelegramButtonPromptTurn({
                 chatId,
                 replyToMessageId: messageId,
                 queueOrder,
                 action,
               }),
-              context,
+              {
+                ...deps.telegramQueueStore,
+                shouldSteerPromptTurn: () => shouldSteerPromptTurn(context),
+                steerPromptTurn: (turn) => steerPromptTurn(turn, context),
+                updateStatus: () => deps.updateStatus(context),
+                dispatchNextQueuedTelegramTurn: () =>
+                  deps.dispatchNextQueuedTelegramTurn(context),
+              },
             );
-            deps.updateStatus(context);
-            deps.dispatchNextQueuedTelegramTurn(context);
           },
         },
       );
@@ -420,6 +445,27 @@ export function createTelegramInboundRouteRuntime<
     sendInteractiveMessage: deps.sendInteractiveMessage,
     recordRuntimeEvent: deps.recordRuntimeEvent,
   });
+  const shouldSteerPromptTurn = (ctx: TContext): boolean =>
+    shouldSteerTelegramPromptTurnState({
+      canSendUserMessage: !!deps.sendUserMessage,
+      compactionInProgress:
+        deps.bridgeRuntime.lifecycle.isCompactionInProgress(),
+      hasPendingDispatch: deps.bridgeRuntime.lifecycle.hasDispatchPending(),
+      hasActiveTelegramTurn: deps.activeTurnRuntime.has(),
+      isIdle: deps.isIdle(ctx),
+    });
+  const steerPromptTurn = (
+    turn: Queue.PendingTelegramTurn,
+    ctx: TContext,
+  ): void => {
+    if (!deps.sendUserMessage) return;
+    if (!deps.activeTurnRuntime.has()) {
+      deps.activeTurnRuntime.set(turn);
+      deps.createActivePreviewState?.();
+      deps.startTypingLoop?.(ctx, turn.chatId);
+    }
+    deps.sendUserMessage(turn.content, { deliverAs: "steer" });
+  };
   const promptEnqueue = Queue.createTelegramPromptEnqueueController<
     TMessage,
     TContext
@@ -430,6 +476,8 @@ export function createTelegramInboundRouteRuntime<
     setFoldQueuedPromptsIntoHistory:
       deps.bridgeRuntime.lifecycle.setFoldQueuedPromptsIntoHistory,
     createTurn: promptTurnBuilder,
+    shouldSteerPromptTurn,
+    steerPromptTurn,
     updateStatus: deps.updateStatus,
     dispatchNextQueuedTelegramTurn: deps.dispatchNextQueuedTelegramTurn,
   }).enqueue;

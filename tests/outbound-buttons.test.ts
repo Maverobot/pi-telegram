@@ -96,6 +96,7 @@ test("Button callback handler enqueues owned actions and consumes expired button
       },
       enqueueButtonPrompt: (query, action, ctx) => {
         enqueued.push({ query, action, ctx });
+        return "queued";
       },
     },
   );
@@ -120,4 +121,26 @@ test("Button callback handler enqueues owned actions and consumes expired button
 
   assert.equal(expired, true);
   assert.deepEqual(answered, ["Queued.", "Button action expired."]);
+});
+
+test("Button callback handler acknowledges steered prompt actions", async () => {
+  const answered: string[] = [];
+  const handled = await handleTelegramButtonCallbackQuery(
+    {
+      id: "q1",
+      data: "tgbtn:live",
+      message: { message_id: 2, chat: { id: 1 } },
+    },
+    "ctx",
+    {
+      resolveAction: () => ({ text: "Run", prompt: "Run it." }),
+      answerCallbackQuery: async (_id, text) => {
+        answered.push(text ?? "");
+      },
+      enqueueButtonPrompt: () => "steered",
+    },
+  );
+
+  assert.equal(handled, true);
+  assert.deepEqual(answered, ["Sent to active run."]);
 });

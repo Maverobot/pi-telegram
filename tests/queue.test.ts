@@ -2396,6 +2396,110 @@ test("Prompt enqueue controller binds runtime ports to context", async () => {
   ]);
 });
 
+test("Prompt enqueue controller steers active runs without appending to queue", async () => {
+  const events: string[] = [];
+  let queuedItems: TelegramQueueItem<string>[] = [];
+  const controller = createTelegramPromptEnqueueController<number, string>({
+    getQueuedItems: () => queuedItems,
+    setQueuedItems: (nextItems) => {
+      queuedItems = nextItems;
+      events.push(`items:${nextItems.length}`);
+    },
+    getFoldQueuedPromptsIntoHistory: () => false,
+    setFoldQueuedPromptsIntoHistory: (fold) => {
+      events.push(`fold:${fold}`);
+    },
+    createTurn: async ([message]) => ({
+      kind: "prompt",
+      chatId: 1,
+      replyToMessageId: 2,
+      queueOrder: message ?? 0,
+      queueLane: "default",
+      laneOrder: message ?? 0,
+      statusSummary: `message ${message}`,
+      sourceMessageIds: [message ?? 0],
+      queuedAttachments: [],
+      content: [{ type: "text", text: String(message) }],
+      historyText: String(message),
+    }),
+    shouldSteerPromptTurn: () => true,
+    steerPromptTurn: (turn, ctx) => {
+      const firstContent = turn.content[0];
+      const text = firstContent?.type === "text" ? firstContent.text : "";
+      events.push(`steer:${ctx}:${text}`);
+    },
+    updateStatus: (ctx) => {
+      events.push(`status:${ctx}`);
+    },
+    dispatchNextQueuedTelegramTurn: (ctx) => {
+      events.push(`dispatch:${ctx}`);
+    },
+  });
+
+  await controller.enqueue([7], "ctx");
+
+  assert.deepEqual(queuedItems, []);
+  assert.deepEqual(events, ["fold:false", "steer:ctx:7", "status:ctx"]);
+});
+
+test("Prompt enqueue controller queues when steering becomes unsafe during turn creation", async () => {
+  const events: string[] = [];
+  let queuedItems: TelegramQueueItem<string>[] = [];
+  let canSteer = true;
+  const controller = createTelegramPromptEnqueueController<number, string>({
+    getQueuedItems: () => queuedItems,
+    setQueuedItems: (nextItems) => {
+      queuedItems = nextItems;
+      events.push(`items:${nextItems.length}`);
+    },
+    getFoldQueuedPromptsIntoHistory: () => false,
+    setFoldQueuedPromptsIntoHistory: (fold) => {
+      events.push(`fold:${fold}`);
+    },
+    createTurn: async ([message]) => {
+      canSteer = false;
+      return {
+        kind: "prompt",
+        chatId: 1,
+        replyToMessageId: 2,
+        queueOrder: message ?? 0,
+        queueLane: "default",
+        laneOrder: message ?? 0,
+        statusSummary: `message ${message}`,
+        sourceMessageIds: [message ?? 0],
+        queuedAttachments: [],
+        content: [{ type: "text", text: String(message) }],
+        historyText: String(message),
+      };
+    },
+    shouldSteerPromptTurn: () => {
+      events.push(`gate:${canSteer}`);
+      return canSteer;
+    },
+    steerPromptTurn: () => {
+      events.push("unexpected:steer");
+    },
+    updateStatus: (ctx) => {
+      events.push(`status:${ctx}`);
+    },
+    dispatchNextQueuedTelegramTurn: (ctx) => {
+      events.push(`dispatch:${ctx}`);
+    },
+  });
+
+  await controller.enqueue([7], "ctx");
+
+  assert.equal(queuedItems.length, 1);
+  assert.deepEqual(events, [
+    "gate:true",
+    "fold:false",
+    "gate:false",
+    "items:1",
+    "status:ctx",
+    "dispatch:ctx",
+  ]);
+});
+
 test("Prompt enqueue runtime folds queued prompts into history", async () => {
   const events: string[] = [];
   const historyPrompt: PendingTelegramTurn = createQueueTestPromptTurn({
