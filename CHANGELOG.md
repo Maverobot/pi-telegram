@@ -2,7 +2,7 @@
 
 ## Unreleased
 
-No open changes.
+- `[ask_user]` Forward active Telegram-turn `ask_user` tool calls to Telegram-visible question messages, with inline buttons for non-guest single-select options, then block local tool execution so pi-ask-user does not open a hidden TUI/RPC dialog. Impact: Telegram-only operators can see and answer decision gates from pi-ask-user workflows.
 
 ## 0.16.2: Screenshot Refresh Hotfix
 

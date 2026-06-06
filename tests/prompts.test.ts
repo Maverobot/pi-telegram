@@ -93,6 +93,8 @@ test("Prompt helpers build before-agent-start hooks", () => {
     /do not call\/register transport\/TTS\/text-to-OGG tools/,
   );
   assert.match(defaultSystemPrompt, /no specific summary format is required/);
+  assert.match(defaultSystemPrompt, /`ask_user` tool calls are forwarded to Telegram/);
+  assert.match(defaultSystemPrompt, /avoid hidden local UI/);
 });
 
 test("Prompt helpers leave local prompts private for proactive result push", async () => {
