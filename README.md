@@ -132,7 +132,7 @@ The menu is the primary way to inspect and mutate queued work. Reactions are an 
 
 ### Interactive `ask_user` prompts
 
-When an agent calls the `ask_user` tool during an active Telegram-originated turn, the bridge forwards the question to Telegram instead of opening a hidden local/TUI dialog. Single-select options become inline buttons when possible; otherwise the user can answer by replying in Telegram. Button taps and replies re-enter normal Telegram prompt routing, steering the active run when safe or queueing otherwise.
+When an agent calls the `ask_user` tool during an active Telegram-originated turn, the bridge forwards the question to Telegram instead of opening a hidden local/TUI dialog. Single-select options become inline buttons when possible; otherwise the user can answer by replying in Telegram. Button taps and replies re-enter normal Telegram prompt routing, steering the active run when safe or queueing otherwise; steered continuations keep Telegram ownership so later `ask_user` calls still appear in Telegram.
 
 ### Streaming and Telegram HTML rendering
 

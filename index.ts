@@ -473,6 +473,7 @@ export default function (pi: Pi.ExtensionAPI) {
     sendMarkdownReply,
     sendTextReply,
     dispatchNextQueuedTelegramTurn,
+    hasPendingMessages,
     answerGuestQuery,
     sendGuestReply,
     finalizeMarkdownPreview,

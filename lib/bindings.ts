@@ -159,6 +159,7 @@ interface TelegramLifecycleBindingDeps {
   >["sendTextReply"] &
     NonNullable<OutboundHandlers.TelegramVoiceReplySenderDeps["sendTextReply"]>;
   dispatchNextQueuedTelegramTurn: (ctx: Pi.ExtensionContext) => void;
+  hasPendingMessages: (ctx: Pi.ExtensionContext) => boolean;
   answerGuestQuery: NonNullable<
     Queue.TelegramAgentEndHookRuntimeDeps<
       Queue.PendingTelegramTurn,
@@ -208,6 +209,7 @@ export function registerTelegramLifecycleRuntimeHooks({
   sendMarkdownReply,
   sendTextReply,
   dispatchNextQueuedTelegramTurn,
+  hasPendingMessages,
   answerGuestQuery,
   sendGuestReply,
   finalizeMarkdownPreview,
@@ -272,6 +274,7 @@ export function registerTelegramLifecycleRuntimeHooks({
     extractAssistant: Replies.extractLatestAssistantMessageText,
     getFoldQueuedPromptsIntoHistory:
       lifecycle.shouldFoldQueuedPromptsIntoHistory,
+    hasPendingMessages,
     resetRuntimeState: agentEndResetter,
     waitForTypingIdle: typing.waitForIdle,
     dispatchNextQueuedTelegramTurn,

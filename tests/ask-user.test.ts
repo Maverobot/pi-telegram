@@ -11,6 +11,8 @@ import {
   createTelegramAskUserToolCallGuard,
   planTelegramAskUserFallbackReply,
 } from "../lib/ask-user.ts";
+import * as Queue from "../lib/queue.ts";
+import * as Runtime from "../lib/runtime.ts";
 import type { PendingTelegramTurn } from "../lib/queue.ts";
 
 function createActiveTurn(): PendingTelegramTurn {
@@ -163,6 +165,61 @@ test("Ask-user tool-call guard forwards guest-mode active turns through guest re
         "**Question**\nGuest question?\n\n**Options**\n1. A\n2. B\n\nChoose an option or reply with your own answer.",
     },
   ]);
+});
+
+test("Ask-user forwarding survives pending steered Telegram messages after agent end", async () => {
+  const activeTurnRuntime = Queue.createTelegramActiveTurnStore();
+  activeTurnRuntime.set(createActiveTurn());
+  const resetRuntimeState = Runtime.createTelegramAgentEndResetter({
+    abort: { clearHandler: () => undefined },
+    typing: { stop: () => false },
+    clearActiveTurn: activeTurnRuntime.clear,
+    resetToolExecutions: () => undefined,
+    clearPendingModelSwitch: () => undefined,
+    clearDispatchPending: () => undefined,
+  });
+  const agentEnd = Queue.createTelegramAgentEndHook<
+    PendingTelegramTurn,
+    Record<string, never>,
+    string,
+    unknown
+  >({
+    getActiveTurn: activeTurnRuntime.get,
+    extractAssistant: () => ({}),
+    getFoldQueuedPromptsIntoHistory: () => false,
+    hasPendingMessages: () => true,
+    resetRuntimeState,
+    updateStatus: () => undefined,
+    dispatchNextQueuedTelegramTurn: () => undefined,
+    requestDeferredDispatchNextQueuedTelegramTurn: (dispatch) => dispatch({}),
+    clearPreview: async () => undefined,
+    setPreviewPendingText: () => undefined,
+    finalizeMarkdownPreview: async () => true,
+    sendMarkdownReply: async () => undefined,
+    sendTextReply: async () => undefined,
+    sendQueuedAttachments: async () => undefined,
+  });
+
+  await agentEnd({ messages: [] }, {});
+
+  const sent: Array<{ markdown: string; replyMarkup?: unknown }> = [];
+  const guard = createTelegramAskUserToolCallGuard({
+    getActiveTurn: activeTurnRuntime.get,
+    registerButtonAction: () => "tgbtn:pending-steer",
+    sendMarkdownReply: async (_chatId, _replyToMessageId, markdown, options) => {
+      sent.push({ markdown, replyMarkup: options?.replyMarkup });
+      return undefined;
+    },
+  });
+
+  const result = await guard(
+    { toolName: "ask_user", input: { question: "Still Telegram?", options: ["Yes"] } },
+    {},
+  );
+
+  assert.equal(result?.block, true);
+  assert.equal(sent.length, 1);
+  assert.match(sent[0]?.markdown ?? "", /Still Telegram\?/);
 });
 
 test("Ask-user tool-call guard passes through non-Telegram or non-ask_user calls", async () => {

@@ -795,6 +795,10 @@ export interface TelegramAgentEndOutboundReplyPlan<TReplyMarkup = unknown> {
   rate?: string;
 }
 
+export interface TelegramAgentEndResetOptions {
+  preserveActiveTurn?: boolean;
+}
+
 export interface TelegramAgentEndRuntimeDeps<
   TTurn extends PendingTelegramTurn,
   TReplyMarkup = unknown,
@@ -802,7 +806,8 @@ export interface TelegramAgentEndRuntimeDeps<
   turn: TTurn | undefined;
   assistant: TelegramAgentEndAssistantResult;
   foldQueuedPromptsIntoHistory: boolean;
-  resetRuntimeState: () => void;
+  preserveActiveTurnAfterReset?: boolean;
+  resetRuntimeState: (options?: TelegramAgentEndResetOptions) => void;
   waitForTypingIdle?: () => Promise<void>;
   updateStatus: () => void;
   dispatchNextQueuedTelegramTurn: () => void;
@@ -861,7 +866,8 @@ export interface TelegramAgentEndHookRuntimeDeps<
     messages: readonly TMessage[],
   ) => TelegramAgentEndAssistantResult;
   getFoldQueuedPromptsIntoHistory: () => boolean;
-  resetRuntimeState: () => void;
+  hasPendingMessages?: (ctx: TContext) => boolean;
+  resetRuntimeState: (options?: TelegramAgentEndResetOptions) => void;
   waitForTypingIdle?: () => Promise<void>;
   updateStatus: (ctx: TContext) => void;
   dispatchNextQueuedTelegramTurn: (ctx: TContext) => void;
@@ -988,6 +994,7 @@ export function createTelegramAgentEndHook<
       assistant:
         turn || proactiveEnabled ? deps.extractAssistant(event.messages) : {},
       foldQueuedPromptsIntoHistory: deps.getFoldQueuedPromptsIntoHistory(),
+      preserveActiveTurnAfterReset: deps.hasPendingMessages?.(ctx) ?? false,
       resetRuntimeState: deps.resetRuntimeState,
       waitForTypingIdle: deps.waitForTypingIdle,
       updateStatus: () => deps.updateStatus(ctx),
@@ -1050,7 +1057,9 @@ export async function handleTelegramAgentEndRuntime<
   const hasOutboundArtifacts =
     !!outboundReply?.voiceText || !!outboundReply?.voiceReplies?.length;
   const replyMarkup = outboundReply?.replyMarkup;
-  deps.resetRuntimeState();
+  deps.resetRuntimeState({
+    preserveActiveTurn: deps.preserveActiveTurnAfterReset === true,
+  });
   await deps.waitForTypingIdle?.();
   deps.updateStatus();
   const endPlan = buildTelegramAgentEndPlan({

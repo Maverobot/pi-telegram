@@ -208,7 +208,7 @@ Key guarantees:
 
 Final delivery attaches reply metadata only where requested. Reply parameters apply only to the first chunk of split messages; continuation chunks are adjacent normal messages. Media-group turns reply to the representative message id.
 
-When a Telegram-owned active turn calls the `ask_user` tool, the bridge catches the tool call before execution, sends the question back to the same Telegram surface, plans non-guest single-select options through the normal `telegram_button` callback store, and blocks the original tool call. Guest-mode turns receive the visible question through guest reply delivery without inline buttons. This prevents pi-ask-user from opening a local dialog that the Telegram operator cannot see. The operator's button tap or Telegram reply becomes a normal Telegram follow-up turn, steering the active run when safe or queueing otherwise.
+When a Telegram-owned active turn calls the `ask_user` tool, the bridge catches the tool call before execution, sends the question back to the same Telegram surface, plans non-guest single-select options through the normal `telegram_button` callback store, and blocks the original tool call. Guest-mode turns receive the visible question through guest reply delivery without inline buttons. This prevents pi-ask-user from opening a local dialog that the Telegram operator cannot see. The operator's button tap or Telegram reply becomes a normal Telegram follow-up turn, steering the active run when safe or queueing otherwise. If a Telegram follow-up is steered while π is already active, Telegram turn ownership is preserved across the pending continuation so later `ask_user` calls still route to Telegram.
 
 ### Outbound Artifacts And Assistant Actions
 

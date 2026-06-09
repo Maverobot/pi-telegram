@@ -448,6 +448,10 @@ export function createTelegramContextAbortHandlerSetter<
   };
 }
 
+export interface TelegramAgentEndResetOptions {
+  preserveActiveTurn?: boolean;
+}
+
 export interface TelegramAgentEndResetDeps {
   abort: Pick<TelegramRuntimeAbortPort, "clearHandler">;
   typing: Pick<TelegramRuntimeTypingPort, "stop">;
@@ -459,11 +463,13 @@ export interface TelegramAgentEndResetDeps {
 
 export function createTelegramAgentEndResetter(
   deps: TelegramAgentEndResetDeps,
-): () => void {
-  return () => {
+): (options?: TelegramAgentEndResetOptions) => void {
+  return (options = {}) => {
     deps.abort.clearHandler();
     deps.typing.stop();
-    deps.clearActiveTurn();
+    if (!options.preserveActiveTurn) {
+      deps.clearActiveTurn();
+    }
     deps.resetToolExecutions();
     deps.clearPendingModelSwitch();
     deps.clearDispatchPending();

@@ -3,6 +3,7 @@
 ## Unreleased
 
 - `[Queue]` Telegram prompt follow-ups now steer any active π run through `sendUserMessage(..., { deliverAs: "steer" })` when safe, instead of waiting in the prompt queue. Steering is disabled during compaction or pending dispatch, and the first steering message from a local/TUI-started run binds that active run to the Telegram reply target. Impact: Telegram operators can interrupt or refine ongoing work immediately while queue safety remains available for non-steerable states.
+- `[ask_user]` Preserve active Telegram turn ownership while π has pending steered messages, so `ask_user` calls in the continuation still forward to Telegram instead of opening a local pi-ask-user prompt. Impact: Telegram follow-up workflows keep decision gates visible on Telegram after in-flight steering.
 - `[ask_user]` Forward active Telegram-turn `ask_user` tool calls to Telegram-visible question messages, with inline buttons for non-guest single-select options, then block local tool execution so pi-ask-user does not open a hidden TUI/RPC dialog. Impact: Telegram-only operators can see and answer decision gates from pi-ask-user workflows.
 
 ## 0.16.6: Telegram Review Hardening Hotfix
